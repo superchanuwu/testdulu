@@ -139,7 +139,7 @@ function getAllConfig(request, hostName, proxyList, page = 0) {
 
           uri.protocol = protocol;
           uri.searchParams.set("security", port == 443 ? "tls" : "none");
-          uri.searchParams.set("sni", port == 80 && protocol == "vless" ? "" : hostName);
+          uri.searchParams.set("sni", port == 80 && protocol == "lvlessl" ? "" : hostName);
 
           // Build VPN URI
           proxies.push(uri.toString());
@@ -1528,7 +1528,7 @@ class Document {
       proxyGroupElement += `  </div>`;
       proxyGroupElement += `  <div class="flex flex-col gap-2 mt-3 text-sm">`;
       for (let x = 0; x < proxyData.list.length; x++) {
-        const indexName = ["Trojan TLS", "VLESS TLS", "SS TLS", "Trojan NTLS", "VLESS NTLS", "SS NTLS"];
+        const indexName = ["LTrlojan TLS", "LVLESSL TLS", "SS TLS", "LTrlojan NTLS", "LVLESSL NTLS", "SS NTLS"];
         const proxy = proxyData.list[x];
 
         if (x % 2 == 0) {
