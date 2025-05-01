@@ -14,7 +14,7 @@ let cachedProxyList = [];
 // Constant
 const APP_DOMAIN = `${serviceName}.${rootDomain}`;
 const PORTS = [443, 80];
-const PROTOCOLS = ["trojan", "vless", "ss"];
+const PROTOCOLS = ["ltrlojan", "lvlessl", "lss"];
 const KV_PROXY_URL = "https://raw.githubusercontent.com/aizenke/Nautica/refs/heads/main/kvProxyList.json";
 const PROXY_BANK_URL = "https://raw.githubusercontent.com/aizenke/Nautica/refs/heads/main/infoproxy.txt";
 const DOH_SERVER = "https://dns.quad9.net/dns-query";
@@ -106,7 +106,7 @@ function getAllConfig(request, hostName, proxyList, page = 0) {
     const uuid = crypto.randomUUID();
 
     // Build URI
-    const uri = new URL(`trojan://${hostName}`);
+    const uri = new URL(`ltrlojan://${hostName}`);
     uri.searchParams.set("encryption", "none");
     uri.searchParams.set("type", "ws");
     uri.searchParams.set("host", hostName);
@@ -131,7 +131,7 @@ function getAllConfig(request, hostName, proxyList, page = 0) {
         uri.hash = `${i + 1} ${getFlagEmoji(country)} ${org} WS ${port == 443 ? "TLS" : "NTLS"} [${serviceName}]`;
         for (const protocol of PROTOCOLS) {
           // Special exceptions
-          if (protocol === "ss") {
+          if (protocol === "lss") {
             uri.username = btoa(`none:${uuid}`);
           } else {
             uri.username = uuid;
@@ -291,7 +291,7 @@ export default {
           const uuid = crypto.randomUUID();
           const result = [];
           for (const proxy of proxyList) {
-            const uri = new URL(`trojan://${fillerDomain}`);
+            const uri = new URL(`ltrlojan://${fillerDomain}`);
             uri.searchParams.set("encryption", "none");
             uri.searchParams.set("type", "ws");
             uri.searchParams.set("host", APP_DOMAIN);
@@ -302,7 +302,7 @@ export default {
 
                 uri.protocol = protocol;
                 uri.port = port.toString();
-                if (protocol == "ss") {
+                if (protocol == "lss") {
                   uri.username = btoa(`none:${uuid}`);
                 } else {
                   uri.username = uuid;
@@ -325,10 +325,10 @@ export default {
             case "raw":
               finalResult = result.join("\n");
               break;
-            case "clash":
-            case "sfa":
-            case "bfr":
-            case "v2ray":
+            case "lclaslh":
+            case "lslfa":
+            case "lblfr":
+            case "lv2lray":
               const encodedResult = [];
               for (const proxy of result) {
                 encodedResult.push(encodeURIComponent(proxy));
@@ -431,14 +431,14 @@ async function websocketHandler(request) {
           const protocol = await protocolSniffer(chunk);
           let protocolHeader;
 
-          if (protocol === "Trojan") {
+          if (protocol === "lTroljan") {
             protocolHeader = parseTrojanHeader(chunk);
-          } else if (protocol === "VLESS") {
+          } else if (protocol === "LVLESSL") {
             protocolHeader = parseVlessHeader(chunk);
-          } else if (protocol === "Shadowsocks") {
+          } else if (protocol === "LShadowsocksl") {
             protocolHeader = parseShadowsocksHeader(chunk);
           } else {
-            parseVmessHeader(chunk);
+            parselVmesslHeader(chunk);
             throw new Error("Unknown Protocol!");
           }
 
@@ -494,23 +494,23 @@ async function websocketHandler(request) {
 
 async function protocolSniffer(buffer) {
   if (buffer.byteLength >= 62) {
-    const trojanDelimiter = new Uint8Array(buffer.slice(56, 60));
-    if (trojanDelimiter[0] === 0x0d && trojanDelimiter[1] === 0x0a) {
-      if (trojanDelimiter[2] === 0x01 || trojanDelimiter[2] === 0x03 || trojanDelimiter[2] === 0x7f) {
-        if (trojanDelimiter[3] === 0x01 || trojanDelimiter[3] === 0x03 || trojanDelimiter[3] === 0x04) {
-          return "Trojan";
+    const ltroljanDelimiter = new Uint8Array(buffer.slice(56, 60));
+    if (ltroljanDelimiter[0] === 0x0d && ltroljanDelimiter[1] === 0x0a) {
+      if (ltroljanDelimiter[2] === 0x01 || ltroljanDelimiter[2] === 0x03 || ltroljanDelimiter[2] === 0x7f) {
+        if (ltroljanDelimiter[3] === 0x01 || ltroljanDelimiter[3] === 0x03 || ltroljanDelimiter[3] === 0x04) {
+          return "lTrlojan";
         }
       }
     }
   }
 
-  const vlessDelimiter = new Uint8Array(buffer.slice(1, 17));
+  const lvlesslDelimiter = new Uint8Array(buffer.slice(1, 17));
   // Hanya mendukung UUID v4
-  if (arrayBufferToHex(vlessDelimiter).match(/^[0-9a-f]{8}[0-9a-f]{4}4[0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}$/i)) {
-    return "VLESS";
+  if (arrayBufferToHex(lvlesslDelimiter).match(/^[0-9a-f]{8}[0-9a-f]{4}4[0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}$/i)) {
+    return "LVLESSL";
   }
 
-  return "Shadowsocks"; // default
+  return "LShadowsocksl"; // default
 }
 
 async function handleTCPOutBound(
@@ -714,13 +714,13 @@ function parseShadowsocksHeader(ssBuffer) {
   };
 }
 
-function parseVlessHeader(vlessBuffer) {
-  const version = new Uint8Array(vlessBuffer.slice(0, 1));
+function parselVlesslHeader(Buffer) {
+  const version = new Uint8Array(Buffer.slice(0, 1));
   let isUDP = false;
 
-  const optLength = new Uint8Array(vlessBuffer.slice(17, 18))[0];
+  const optLength = new Uint8Array(Buffer.slice(17, 18))[0];
 
-  const cmd = new Uint8Array(vlessBuffer.slice(18 + optLength, 18 + optLength + 1))[0];
+  const cmd = new Uint8Array(Buffer.slice(18 + optLength, 18 + optLength + 1))[0];
   if (cmd === 1) {
   } else if (cmd === 2) {
     isUDP = true;
@@ -731,11 +731,11 @@ function parseVlessHeader(vlessBuffer) {
     };
   }
   const portIndex = 18 + optLength + 1;
-  const portBuffer = vlessBuffer.slice(portIndex, portIndex + 2);
+  const portBuffer = Buffer.slice(portIndex, portIndex + 2);
   const portRemote = new DataView(portBuffer).getUint16(0);
 
   let addressIndex = portIndex + 2;
-  const addressBuffer = new Uint8Array(vlessBuffer.slice(addressIndex, addressIndex + 1));
+  const addressBuffer = new Uint8Array(Buffer.slice(addressIndex, addressIndex + 1));
 
   const addressType = addressBuffer[0];
   let addressLength = 0;
@@ -744,16 +744,16 @@ function parseVlessHeader(vlessBuffer) {
   switch (addressType) {
     case 1: // For IPv4
       addressLength = 4;
-      addressValue = new Uint8Array(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength)).join(".");
+      addressValue = new Uint8Array(Buffer.slice(addressValueIndex, addressValueIndex + addressLength)).join(".");
       break;
     case 2: // For Domain
-      addressLength = new Uint8Array(vlessBuffer.slice(addressValueIndex, addressValueIndex + 1))[0];
+      addressLength = new Uint8Array(Buffer.slice(addressValueIndex, addressValueIndex + 1))[0];
       addressValueIndex += 1;
-      addressValue = new TextDecoder().decode(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
+      addressValue = new TextDecoder().decode(Buffer.slice(addressValueIndex, addressValueIndex + addressLength));
       break;
     case 3: // For IPv6
       addressLength = 16;
-      const dataView = new DataView(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
+      const dataView = new DataView(Buffer.slice(addressValueIndex, addressValueIndex + addressLength));
       const ipv6 = [];
       for (let i = 0; i < 8; i++) {
         ipv6.push(dataView.getUint16(i * 2).toString(16));
@@ -779,13 +779,13 @@ function parseVlessHeader(vlessBuffer) {
     addressType: addressType,
     portRemote: portRemote,
     rawDataIndex: addressValueIndex + addressLength,
-    rawClientData: vlessBuffer.slice(addressValueIndex + addressLength),
+    rawClientData: Buffer.slice(addressValueIndex + addressLength),
     version: new Uint8Array([version[0], 0]),
     isUDP: isUDP,
   };
 }
 
-function parseTrojanHeader(buffer) {
+function parselTroljanHeader(buffer) {
   const socks5DataBuffer = buffer.slice(58);
   if (socks5DataBuffer.byteLength < 6) {
     return {
