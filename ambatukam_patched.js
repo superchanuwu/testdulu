@@ -431,8 +431,8 @@ async function websocketHandler(request) {
           const protocol = await protocolSniffer(chunk);
           let protocolHeader;
 
-          if (protocol === "LTroljan") {
-            protocolHeader = parseLTroljanHeader(chunk);
+          if (protocol === "LTrlojan") {
+            protocolHeader = parseLTrlojanHeader(chunk);
           } else if (protocol === "LVLESSL") {
             protocolHeader = parseLVlesslHeader(chunk);
           } else if (protocol === "Sawo") {
@@ -494,10 +494,10 @@ async function websocketHandler(request) {
 
 async function protocolSniffer(buffer) {
   if (buffer.byteLength >= 62) {
-    const ltroljanDelimiter = new Uint8Array(buffer.slice(56, 60));
-    if (ltroljanDelimiter[0] === 0x0d && ltroljanDelimiter[1] === 0x0a) {
-      if (ltroljanDelimiter[2] === 0x01 || ltroljanDelimiter[2] === 0x03 || ltroljanDelimiter[2] === 0x7f) {
-        if (ltroljanDelimiter[3] === 0x01 || ltroljanDelimiter[3] === 0x03 || ltroljanDelimiter[3] === 0x04) {
+    const ltrlojanDelimiter = new Uint8Array(buffer.slice(56, 60));
+    if (ltrlojanDelimiter[0] === 0x0d && ltrlojanDelimiter[1] === 0x0a) {
+      if (ltrlojanDelimiter[2] === 0x01 || ltrlojanDelimiter[2] === 0x03 || ltrlojanDelimiter[2] === 0x7f) {
+        if (ltrlojanDelimiter[3] === 0x01 || ltrlojanDelimiter[3] === 0x03 || ltrlojanDelimiter[3] === 0x04) {
           return "LTrlojan";
         }
       }
@@ -785,7 +785,7 @@ function parseLVlesslHeader(Buffer) {
   };
 }
 
-function parseLTroljanHeader(buffer) {
+function parseLTrlojanHeader(buffer) {
   const socks5DataBuffer = buffer.slice(58);
   if (socks5DataBuffer.byteLength < 6) {
     return {
