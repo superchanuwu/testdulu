@@ -436,7 +436,7 @@ async function websocketHandler(request) {
           } else if (protocol === "LVLESSL") {
             protocolHeader = parseLVlesslHeader(chunk);
           } else if (protocol === "Sawo") {
-            protocolHeader = parseSawoHeader(chunk);
+            protocolHeader = parseSsHeader(chunk);
           } else {
             parseLVmesslHeader(chunk);
             throw new Error("Unknown Protocol!");
@@ -658,7 +658,7 @@ function parseLVmesslHeader(lvmesslBuffer) {
   // https://xtls.github.io/development/protocols/vmess.html#%E6%8C%87%E4%BB%A4%E9%83%A8%E5%88%86
 }
 
-function parseSawoHeader(ssBuffer) {
+function parseSsHeader(ssBuffer) {
   const view = new DataView(ssBuffer);
 
   const addressType = view.getUint8(0);
