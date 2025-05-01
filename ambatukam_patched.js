@@ -435,10 +435,11 @@ async function websocketHandler(request) {
             protocolHeader = parseLTrlojanHeader(chunk);
           } else if (protocol === "LVLESSL") {
             protocolHeader = parseLVlesslHeader(chunk);
+          } else if (protocol === "LVMESSL") {
+            protocolHeader = parseLVmesslHeader(chunk);
           } else if (protocol === "Sawo") {
             protocolHeader = parseSsHeader(chunk);
           } else {
-            parseLVmesslHeader(chunk);
             throw new Error("Unknown Protocol!");
           }
 
@@ -508,6 +509,15 @@ async function protocolSniffer(buffer) {
   // Hanya mendukung UUID v4
   if (arrayBufferToHex(lvlesslDelimiter).match(/^[0-9a-f]{8}[0-9a-f]{4}4[0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}$/i)) {
     return "LVLESSL";
+  }
+
+  const LvmesslUUID = new Uint8Array(buffer.slice(1, 17));
+  if (
+    arrayBufferToHex(vmessUUID).match(
+      /^[0-9a-f]{8}[0-9a-f]{4}4[0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}$/i
+    )
+  ) {
+    return "LVMESSL";
   }
 
   return "Sawo"; // default
@@ -654,8 +664,50 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
   return stream;
 }
 
-function parseLVmesslHeader(lvmesslBuffer) {
+function parseRmeRsslHeader(REEBuffer) {
   // https://xtls.github.io/development/protocols/vmess.html#%E6%8C%87%E4%BB%A4%E9%83%A8%E5%88%86
+}
+
+function parseLVmesslHeader(lvmesslBuffer) {
+  const version = buffer[0];
+  if (version !== 1) {
+    return {
+      hasError: true,
+      message: "Unsupported LVMless version",
+    };
+  }
+
+  const uuidBytes = lvmesslBuffer.slice(1, 17);
+  const uuid = arrayBufferToHex(uuidBytes).match(
+    /^(.{8})(.{4})(.{4})(.{4})(.{12})$/
+  );
+  const uuidStr = uuid ? `${uuid[1]}-${uuid[2]}-${uuid[3]}-${uuid[4]}-${uuid[5]}` : "";
+
+  const portBuffer = lvmesslBuffer.slice(38, 40);
+  const port = new DataView(portBuffer).getUint16(0);
+
+  const addressType = buffer[40];
+  let address = "unknown";
+  let offset = 41;
+
+  if (addressType === 1) {
+    address = Array.from(lvmesslBuffer.slice(offset, offset + 4)).join(".");
+    offset += 4;
+  } else if (addressType === 3) {
+    const domainLen = buffer[offset];
+    offset += 1;
+    address = new TextDecoder().decode(lvmesslBuffer.slice(offset, offset + domainLen));
+    offset += domainLen;
+  }
+
+  return {
+    hasError: false,
+    addressRemote: address,
+    portRemote: port,
+    rawClientData: lvmesslBuffer.slice(offset),
+    version: null,
+    isUDP: false,
+  };
 }
 
 function parseSsHeader(ssBuffer) {
@@ -714,13 +766,13 @@ function parseSsHeader(ssBuffer) {
   };
 }
 
-function parseLVlesslHeader(Buffer) {
-  const version = new Uint8Array(Buffer.slice(0, 1));
+function parseLVlesslHeader(lvlesslBuffer) {
+  const version = new Uint8Array(lvlesslBuffer.slice(0, 1));
   let isUDP = false;
 
-  const optLength = new Uint8Array(Buffer.slice(17, 18))[0];
+  const optLength = new Uint8Array(lvlesslBuffer.slice(17, 18))[0];
 
-  const cmd = new Uint8Array(Buffer.slice(18 + optLength, 18 + optLength + 1))[0];
+  const cmd = new Uint8Array(lvlesslBuffer.slice(18 + optLength, 18 + optLength + 1))[0];
   if (cmd === 1) {
   } else if (cmd === 2) {
     isUDP = true;
@@ -731,11 +783,11 @@ function parseLVlesslHeader(Buffer) {
     };
   }
   const portIndex = 18 + optLength + 1;
-  const portBuffer = Buffer.slice(portIndex, portIndex + 2);
+  const portBuffer = lvlesslBuffer.slice(portIndex, portIndex + 2);
   const portRemote = new DataView(portBuffer).getUint16(0);
 
   let addressIndex = portIndex + 2;
-  const addressBuffer = new Uint8Array(Buffer.slice(addressIndex, addressIndex + 1));
+  const addressBuffer = new Uint8Array(lvlesslBuffer.slice(addressIndex, addressIndex + 1));
 
   const addressType = addressBuffer[0];
   let addressLength = 0;
@@ -744,16 +796,16 @@ function parseLVlesslHeader(Buffer) {
   switch (addressType) {
     case 1: // For IPv4
       addressLength = 4;
-      addressValue = new Uint8Array(Buffer.slice(addressValueIndex, addressValueIndex + addressLength)).join(".");
+      addressValue = new Uint8Array(lvlesslBuffer.slice(addressValueIndex, addressValueIndex + addressLength)).join(".");
       break;
     case 2: // For Domain
-      addressLength = new Uint8Array(Buffer.slice(addressValueIndex, addressValueIndex + 1))[0];
+      addressLength = new Uint8Array(lvlesslBuffer.slice(addressValueIndex, addressValueIndex + 1))[0];
       addressValueIndex += 1;
-      addressValue = new TextDecoder().decode(Buffer.slice(addressValueIndex, addressValueIndex + addressLength));
+      addressValue = new TextDecoder().decode(lvlesslBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
       break;
     case 3: // For IPv6
       addressLength = 16;
-      const dataView = new DataView(Buffer.slice(addressValueIndex, addressValueIndex + addressLength));
+      const dataView = new DataView(lvlesslBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
       const ipv6 = [];
       for (let i = 0; i < 8; i++) {
         ipv6.push(dataView.getUint16(i * 2).toString(16));
@@ -779,7 +831,7 @@ function parseLVlesslHeader(Buffer) {
     addressType: addressType,
     portRemote: portRemote,
     rawDataIndex: addressValueIndex + addressLength,
-    rawClientData: Buffer.slice(addressValueIndex + addressLength),
+    rawClientData: lvlesslBuffer.slice(addressValueIndex + addressLength),
     version: new Uint8Array([version[0], 0]),
     isUDP: isUDP,
   };
