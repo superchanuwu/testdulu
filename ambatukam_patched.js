@@ -673,7 +673,7 @@ function parseLVmesslHeader(lvmesslBuffer) {
   if (version !== 1) {
     return {
       hasError: true,
-      message: "Unsupported LVMless version",
+      message: "Unsupported LVMlessl version",
     };
   }
 
