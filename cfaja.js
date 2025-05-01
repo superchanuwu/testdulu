@@ -1,7 +1,7 @@
 
 import { connect } from "cloudflare:sockets";
 
-// === Tambahan dukungan VMess AEAD (lengkap) ===
+// === Tambahan dukungan VTobrutMess AEAD (lengkap) ===
 importScripts("https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js");
 
 function md5Concat(...arrays) {
