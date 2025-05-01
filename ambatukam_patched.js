@@ -131,7 +131,7 @@ function getAllConfig(request, hostName, proxyList, page = 0) {
         uri.hash = `${i + 1} ${getFlagEmoji(country)} ${org} WS ${port == 443 ? "TLS" : "NTLS"} [${serviceName}]`;
         for (const protocol of PROTOCOLS) {
           // Special exceptions
-          if (protocol === "lss") {
+          if (protocol === "ss") {
             uri.username = btoa(`none:${uuid}`);
           } else {
             uri.username = uuid;
@@ -162,7 +162,7 @@ function getAllConfig(request, hostName, proxyList, page = 0) {
 
     return document.build();
   } catch (error) {
-    return `An error occurred while generating the VLESS configurations. ${error}`;
+    return `An error occurred while generating the LVLESSL configurations. ${error}`;
   }
 }
 
@@ -302,7 +302,7 @@ export default {
 
                 uri.protocol = protocol;
                 uri.port = port.toString();
-                if (protocol == "lss") {
+                if (protocol == "ss") {
                   uri.username = btoa(`none:${uuid}`);
                 } else {
                   uri.username = uuid;
@@ -431,14 +431,14 @@ async function websocketHandler(request) {
           const protocol = await protocolSniffer(chunk);
           let protocolHeader;
 
-          if (protocol === "lTroljan") {
-            protocolHeader = parseTrojanHeader(chunk);
+          if (protocol === "LTroljan") {
+            protocolHeader = parseLTroljanHeader(chunk);
           } else if (protocol === "LVLESSL") {
-            protocolHeader = parseVlessHeader(chunk);
-          } else if (protocol === "LShadowsocksl") {
-            protocolHeader = parseShadowsocksHeader(chunk);
+            protocolHeader = parseLVlesslHeader(chunk);
+          } else if (protocol === "Sawo") {
+            protocolHeader = parseSawoHeader(chunk);
           } else {
-            parselVmesslHeader(chunk);
+            parseLVmesslHeader(chunk);
             throw new Error("Unknown Protocol!");
           }
 
@@ -498,7 +498,7 @@ async function protocolSniffer(buffer) {
     if (ltroljanDelimiter[0] === 0x0d && ltroljanDelimiter[1] === 0x0a) {
       if (ltroljanDelimiter[2] === 0x01 || ltroljanDelimiter[2] === 0x03 || ltroljanDelimiter[2] === 0x7f) {
         if (ltroljanDelimiter[3] === 0x01 || ltroljanDelimiter[3] === 0x03 || ltroljanDelimiter[3] === 0x04) {
-          return "lTrlojan";
+          return "LTrlojan";
         }
       }
     }
@@ -510,7 +510,7 @@ async function protocolSniffer(buffer) {
     return "LVLESSL";
   }
 
-  return "LShadowsocksl"; // default
+  return "Sawo"; // default
 }
 
 async function handleTCPOutBound(
@@ -654,11 +654,11 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
   return stream;
 }
 
-function parseVmessHeader(vmessBuffer) {
+function parseLVmesslHeader(lvmesslBuffer) {
   // https://xtls.github.io/development/protocols/vmess.html#%E6%8C%87%E4%BB%A4%E9%83%A8%E5%88%86
 }
 
-function parseShadowsocksHeader(ssBuffer) {
+function parseSawoHeader(ssBuffer) {
   const view = new DataView(ssBuffer);
 
   const addressType = view.getUint8(0);
@@ -688,7 +688,7 @@ function parseShadowsocksHeader(ssBuffer) {
     default:
       return {
         hasError: true,
-        message: `Invalid addressType for Shadowsocks: ${addressType}`,
+        message: `Invalid addressType for Sawo: ${addressType}`,
       };
   }
 
@@ -714,7 +714,7 @@ function parseShadowsocksHeader(ssBuffer) {
   };
 }
 
-function parselVlesslHeader(Buffer) {
+function parseLVlesslHeader(Buffer) {
   const version = new Uint8Array(Buffer.slice(0, 1));
   let isUDP = false;
 
@@ -785,7 +785,7 @@ function parselVlesslHeader(Buffer) {
   };
 }
 
-function parselTroljanHeader(buffer) {
+function parseLTroljanHeader(buffer) {
   const socks5DataBuffer = buffer.slice(58);
   if (socks5DataBuffer.byteLength < 6) {
     return {
