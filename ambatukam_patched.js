@@ -309,7 +309,7 @@ export default {
                 }
 
                 uri.searchParams.set("security", port == 443 ? "tls" : "none");
-                uri.searchParams.set("sni", port == 80 && protocol == "vless" ? "" : APP_DOMAIN);
+                uri.searchParams.set("sni", port == 80 && protocol == "lvlessl" ? "" : APP_DOMAIN);
                 uri.searchParams.set("path", `/${proxy.proxyIP}-${proxy.proxyPort}`);
 
                 uri.hash = `${result.length + 1} ${getFlagEmoji(proxy.country)} ${proxy.org} WS ${
