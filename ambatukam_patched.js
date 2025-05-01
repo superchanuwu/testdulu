@@ -513,7 +513,7 @@ async function protocolSniffer(buffer) {
 
   const LvmesslUUID = new Uint8Array(buffer.slice(1, 17));
   if (
-    arrayBufferToHex(vmessUUID).match(
+    arrayBufferToHex(lvmessUUID).match(
       /^[0-9a-f]{8}[0-9a-f]{4}4[0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}$/i
     )
   ) {
