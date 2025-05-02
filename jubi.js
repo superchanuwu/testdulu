@@ -647,9 +647,76 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
   return stream;
 }
 
-function parseVmessHeader(vmessBuffer) {
-  // https://xtls.github.io/development/protocols/vmess.html#%E6%8C%87%E4%BB%A4%E9%83%A8%E5%88%86
+async function parseVmessHeader(vmessBuffer) {
+  const uuid = "f282b878-8711-45a1-8c69-5564172123c1";
+  const reader = { index: 0, buffer: new Uint8Array(vmessBuffer) };
+  reader.readBytes = (n) => {
+    const result = reader.buffer.slice(reader.index, reader.index + n);
+    reader.index += n;
+    return result;
+  };
+
+  const authId = reader.readBytes(16);
+  const len = reader.readBytes(18);
+  const nonce = reader.readBytes(8);
+  const key = md5Concat(new TextEncoder().encode(uuid), new TextEncoder().encode("c48619fe-8f02-49e0-b9e9-edf763e17e21"));
+
+  const headerLenKey = (await kdf(key, [new TextEncoder().encode("VMess Header AEAD Key_Length"), authId, nonce])).slice(0, 16);
+  const headerLenIv = (await kdf(key, [new TextEncoder().encode("VMess Header AEAD Nonce_Length"), authId, nonce])).slice(0, 12);
+  const lenDecrypted = await decryptAESGCM(len, headerLenKey, headerLenIv, authId);
+  const headerLength = (lenDecrypted[0] << 8) | lenDecrypted[1];
+
+  const cmdBuf = reader.readBytes(headerLength + 16);
+  const payloadKey = (await kdf(key, [new TextEncoder().encode("VMess Header AEAD Key"), authId, nonce])).slice(0, 16);
+  const payloadIv = (await kdf(key, [new TextEncoder().encode("VMess Header AEAD Nonce"), authId, nonce])).slice(0, 12);
+  const decrypted = await decryptAESGCM(cmdBuf, payloadKey, payloadIv, authId);
+
+  const version = new Uint8Array([1, 0]);
+  const addressType = decrypted[3];
+  let address = "", port = 0, addressLength = 0, addressOffset = 0;
+
+  if (addressType === 1) {
+    address = [...decrypted.slice(4, 8)].join(".");
+    port = (decrypted[8] << 8) | decrypted[9];
+    addressOffset = 10;
+  } else if (addressType === 2) {
+    addressLength = decrypted[4];
+    address = new TextDecoder().decode(decrypted.slice(5, 5 + addressLength));
+    port = (decrypted[5 + addressLength] << 8) | decrypted[5 + addressLength + 1];
+    addressOffset = 5 + addressLength + 2;
+  } else if (addressType === 3) {
+    const dataView = new DataView(decrypted.buffer, decrypted.byteOffset + 4, 16);
+    const ipv6 = [];
+    for (let i = 0; i < 8; i++) {
+      ipv6.push(dataView.getUint16(i * 2).toString(16));
+    }
+    address = ipv6.join(":");
+    port = (decrypted[20] << 8) | decrypted[21];
+    addressOffset = 22;
+  } else {
+    return {
+      hasError: true,
+      message: `Invalid addressType: ${addressType}`,
+    };
+  }
+
+  if (!address) {
+    return {
+      hasError: true,
+      message: "addressValue is empty",
+    };
+  }
+
+  return {
+    hasError: false,
+    addressRemote: address,
+    portRemote: port,
+    rawClientData: vmessBuffer.slice(reader.index),
+    version: version,
+    isUDP: false
+  };
 }
+
 
 function parseShadowsocksHeader(ssBuffer) {
   const view = new DataView(ssBuffer);
