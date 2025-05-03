@@ -656,73 +656,81 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
   return stream;
 }
 
-async function parseCfvmcfessHeader(cfvmcfessBuffer) {
-  const uuid = "f282b878-8711-45a1-8c69-5564172123c1";
-  const reader = { index: 0, buffer: new Uint8Array(cfvmcfessBuffer) };
-  reader.readBytes = (n) => {
-    const result = reader.buffer.slice(reader.index, reader.index + n);
-    reader.index += n;
-    return result;
-  };
+// Bagian: Decrypt AEAD untuk Cfvmcfess
+async function decryptCfvmcfess(buffer) {
+  const iv = buffer.slice(0, 16);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    iv,
+    { name: "AES-GCM" },
+    false,
+    ["decrypt"]
+  );
+  try {
+    const decrypted = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv },
+      key,
+      buffer.slice(16)
+    );
+    return new Uint8Array(decrypted);
+  } catch (e) {
+    return null;
+  }
+}
 
-  const authId = reader.readBytes(16);
-  const len = reader.readBytes(18);
-  const nonce = reader.readBytes(8);
-  const key = md5Concat(new TextEncoder().encode(uuid), new TextEncoder().encode("c48619fe-8f02-49e0-b9e9-edf763e17e21"));
 
-  const headerLenKey = (await kdf(key, [new TextEncoder().encode("Cfvmcfess Header AEAD Key_Length"), authId, nonce])).slice(0, 16);
-  const headerLenIv = (await kdf(key, [new TextEncoder().encode("Cfvmcfess Header AEAD Nonce_Length"), authId, nonce])).slice(0, 12);
-  const lenDecrypted = await decryptAESGCM(len, headerLenKey, headerLenIv, authId);
-  const headerLength = (lenDecrypted[0] << 8) | lenDecrypted[1];
+function parseCfvmcfessHeader(cfvmcfessBuffer) {
+  const version = new Uint8Array(cfvmcfessBuffer.slice(32, 33));
+  const decryptedPayload = decryptCfvmcfessAEAD(cfvmcfessBuffer);
 
-  const cmdBuf = reader.readBytes(headerLength + 16);
-  const payloadKey = (await kdf(key, [new TextEncoder().encode("Cfvmcfess Header AEAD Key"), authId, nonce])).slice(0, 16);
-  const payloadIv = (await kdf(key, [new TextEncoder().encode("Cfvmcfess Header AEAD Nonce"), authId, nonce])).slice(0, 12);
-  const decrypted = await decryptAESGCM(cmdBuf, payloadKey, payloadIv, authId);
-
-  const version = new Uint8Array([1, 0]);
-  const addressType = decrypted[3];
-  let address = "", port = 0, addressLength = 0, addressOffset = 0;
-
-  if (addressType === 1) {
-    address = [...decrypted.slice(4, 8)].join(".");
-    port = (decrypted[8] << 8) | decrypted[9];
-    addressOffset = 10;
-  } else if (addressType === 2) {
-    addressLength = decrypted[4];
-    address = new TextDecoder().decode(decrypted.slice(5, 5 + addressLength));
-    port = (decrypted[5 + addressLength] << 8) | decrypted[5 + addressLength + 1];
-    addressOffset = 5 + addressLength + 2;
-  } else if (addressType === 3) {
-    const dataView = new DataView(decrypted.buffer, decrypted.byteOffset + 4, 16);
-    const ipv6 = [];
-    for (let i = 0; i < 8; i++) {
-      ipv6.push(dataView.getUint16(i * 2).toString(16));
-    }
-    address = ipv6.join(":");
-    port = (decrypted[20] << 8) | decrypted[21];
-    addressOffset = 22;
-  } else {
+  if (!decryptedPayload) {
     return {
       hasError: true,
-      message: `Invalid addressType: ${addressType}`,
+      message: "Failed to decrypt Cfvmcfess AEAD payload.",
     };
   }
 
-  if (!address) {
-    return {
-      hasError: true,
-      message: "addressValue is empty",
-    };
+  const dataView = new DataView(decryptedPayload.buffer);
+  const command = decryptedPayload[0];
+  const portRemote = dataView.getUint16(1);
+  const addressType = decryptedPayload[3];
+  let addressLength = 0;
+  let addressValueIndex = 4;
+  let addressValue = "";
+
+  switch (addressType) {
+    case 1: // IPv4
+      addressLength = 4;
+      addressValue = Array.from(decryptedPayload.slice(addressValueIndex, addressValueIndex + addressLength)).join(".");
+      break;
+    case 2: // Domain
+      addressLength = decryptedPayload[addressValueIndex];
+      addressValueIndex++;
+      addressValue = new TextDecoder().decode(
+        decryptedPayload.slice(addressValueIndex, addressValueIndex + addressLength)
+      );
+      break;
+    case 3: // IPv6
+      addressLength = 16;
+      const addrSlice = decryptedPayload.slice(addressValueIndex, addressValueIndex + addressLength);
+      addressValue = Array.from(new Uint16Array(addrSlice.buffer)).map(b => b.toString(16)).join(":");
+      break;
+    default:
+      return {
+        hasError: true,
+        message: "Unknown address type in Cfvmcfess",
+      };
   }
 
   return {
     hasError: false,
-    addressRemote: address,
-    portRemote: port,
-    rawClientData: cfvmcfessBuffer.slice(reader.index),
-    version: version,
-    isUDP: false
+    addressRemote: addressValue,
+    addressType: addressType,
+    portRemote: portRemote,
+    rawDataIndex: addressValueIndex + addressLength,
+    rawClientData: decryptedPayload.slice(addressValueIndex + addressLength),
+    version: new Uint8Array([version[0], 0]),
+    isUDP: command === 2,
   };
 }
 
