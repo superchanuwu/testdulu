@@ -699,7 +699,7 @@ async function decryptCfvmefess(buffer) {
         name: "HKDF",
         hash: "SHA-256",
         salt,
-        info: new Uint8Array([118, 109, 101, 115, 115, 65, 69, 65, 68]) // "vmessAEAD"
+        info: new Uint8Array([118, 109, 101, 115, 115, 65, 69, 65, 68])
       },
       keyMaterial,
       { name: "AES-GCM", length: 128 },
