@@ -664,10 +664,22 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
 
 // Bagian: Decrypt AEAD untuk Cfvmcfess
 async function decryptCfvmefess(buffer) {
+function uuidToUint8Array(uuid) {
+  const hex = uuid.replace(/-/g, '');
+  if (hex.length !== 32) throw new Error('Invalid UUID format');
+  const arr = new Uint8Array(16);
+  for (let i = 0; i < 16; i++) {
+    arr[i] = parseInt(hex.substr(i * 2, 2), 16);
+  }
+  return arr;
+}
+
+async function decryptCfvmefess(buffer, user) {
   const SALT_LEN = 16;
   const NONCE_LEN = 12;
   const TAG_LEN = 16;
   const HEADER_LEN = SALT_LEN + 2 + NONCE_LEN + TAG_LEN;
+
   if (buffer.byteLength < HEADER_LEN + 1) return null;
 
   const salt = buffer.slice(0, SALT_LEN);
@@ -678,28 +690,23 @@ async function decryptCfvmefess(buffer) {
   const nonce = buffer.slice(SALT_LEN + 2, SALT_LEN + 2 + NONCE_LEN);
   const encrypted = buffer.slice(SALT_LEN + 2 + NONCE_LEN, SALT_LEN + 2 + NONCE_LEN + payloadLength + TAG_LEN);
 
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw",
-    user.uuid,
-    { name: "HKDF" },
-    false,
-    ["deriveKey"]
-  );
-  const derivedKey = await crypto.subtle.deriveKey(
-    {
-      name: "HKDF",
-      hash: "SHA-256",
-      salt,
-      info: new Uint8Array([118, 109, 101, 115, 115, 65, 69, 65, 68]) // "Cfvmcfess"
-    },
-    keyMaterial,
-    { name: "AES-GCM", length: 128 },
-    false,
-    ["decrypt"]
-  );
-
-  let decryptedBuffer;
+  let keyMaterial, derivedKey, decryptedBuffer;
   try {
+    const uuidBytes = uuidToUint8Array(user.uuid);
+    keyMaterial = await crypto.subtle.importKey("raw", uuidBytes, { name: "HKDF" }, false, ["deriveKey"]);
+    derivedKey = await crypto.subtle.deriveKey(
+      {
+        name: "HKDF",
+        hash: "SHA-256",
+        salt,
+        info: new Uint8Array([118, 109, 101, 115, 115, 65, 69, 65, 68]) // "vmessAEAD"
+      },
+      keyMaterial,
+      { name: "AES-GCM", length: 128 },
+      false,
+      ["decrypt"]
+    );
+
     decryptedBuffer = new Uint8Array(
       await crypto.subtle.decrypt(
         { name: "AES-GCM", iv: nonce },
@@ -707,12 +714,11 @@ async function decryptCfvmefess(buffer) {
         encrypted
       )
     );
-  } catch {
+  } catch (e) {
     return null;
   }
 
   if (decryptedBuffer[0] !== 1) return null;
-
   return parseCfvmefessHeader(decryptedBuffer);
 }
 
