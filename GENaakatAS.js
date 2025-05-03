@@ -661,63 +661,65 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
 }
 
 
+const allowedUUIDs = [
+  "f282b878-8711-45a1-8c69-5564172123c1",
+  "d1f6ccdf-bf4e-4e1f-9e43-1887b3f1a5aa",
+  // Tambahkan UUID lainnya jika perlu
+];
+
+function uuidToBin(uuid) {
+  return new Uint8Array(uuid.replace(/-/g, "").match(/.{1,2}/g).map(h => parseInt(h, 16)));
+}
 
 // Bagian: Decrypt AEAD untuk cfvmefess
 async function decryptCfvmefess(buffer) {
   const SALT_LEN = 16;
-  const UUID_LEN = 16;
   const NONCE_LEN = 12;
   const TAG_LEN = 16;
-  const HEADER_LEN = SALT_LEN + UUID_LEN + 2 + NONCE_LEN + TAG_LEN;
+  const HEADER_LEN = SALT_LEN + 16 + 2 + NONCE_LEN + TAG_LEN;
 
-  if (buffer.byteLength < HEADER_LEN + 1) return null;
+  if (buffer.byteLength < HEADER_LEN) return null;
 
   const salt = buffer.slice(0, SALT_LEN);
-  const uuidBin = buffer.slice(SALT_LEN, SALT_LEN + UUID_LEN); // UUID biner dari buffer
-  const payloadLengthBytes = buffer.slice(SALT_LEN + UUID_LEN, SALT_LEN + UUID_LEN + 2);
+  const payloadLengthBytes = buffer.slice(SALT_LEN + 16, SALT_LEN + 18);
   const payloadLength = (payloadLengthBytes[0] << 8) + payloadLengthBytes[1];
-
   if (buffer.byteLength < HEADER_LEN + payloadLength) return null;
 
-  const nonce = buffer.slice(SALT_LEN + UUID_LEN + 2, SALT_LEN + UUID_LEN + 2 + NONCE_LEN);
+  const nonce = buffer.slice(SALT_LEN + 16 + 2, SALT_LEN + 16 + 2 + NONCE_LEN);
   const encrypted = buffer.slice(
-    SALT_LEN + UUID_LEN + 2 + NONCE_LEN,
-    SALT_LEN + UUID_LEN + 2 + NONCE_LEN + payloadLength + TAG_LEN
+    SALT_LEN + 16 + 2 + NONCE_LEN,
+    SALT_LEN + 16 + 2 + NONCE_LEN + payloadLength + TAG_LEN
   );
 
-  let keyMaterial, derivedKey, decryptedBuffer;
-  try {
-    keyMaterial = await crypto.subtle.importKey(
-      "raw",
-      uuidBin,
-      { name: "HKDF" },
-      false,
-      ["deriveKey"]
-    );
-    derivedKey = await crypto.subtle.deriveKey(
-      {
+  for (const uuidStr of allowedUUIDs) {
+    const uuidBin = uuidToBin(uuidStr);
+    try {
+      const keyMaterial = await crypto.subtle.importKey("raw", uuidBin, "HKDF", false, ["deriveKey"]);
+      const derivedKey = await crypto.subtle.deriveKey({
         name: "HKDF",
         hash: "SHA-256",
         salt,
-        info: new Uint8Array([118, 109, 101, 115, 115, 65, 69, 65, 68])
-      },
-      keyMaterial,
-      { name: "AES-GCM", length: 128 },
-      false,
-      ["decrypt"]
-    );
-    decryptedBuffer = new Uint8Array(await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: nonce },
-      derivedKey,
-      encrypted
-    ));
-  } catch (e) {
-    return null;
+        info: new Uint8Array([118, 109, 101, 115, 115, 69, 69, 68]),
+      }, keyMaterial, { name: "AES-GCM", length: 128 }, false, ["decrypt"]);
+
+      const decryptedBuffer = new Uint8Array(await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: nonce },
+        derivedKey,
+        encrypted
+      ));
+
+      if (decryptedBuffer[0] !== 1) continue;
+      return parseCfvmefessHeader(decryptedBuffer);
+    } catch (e) {
+      continue; // Coba UUID berikutnya
+    }
   }
 
-  if (decryptedBuffer[0] !== 1) return null;
-  return parseCfvmefessHeader(decryptedBuffer);
+  return null; // Tidak ada UUID cocok
 }
+
+
+
 
 function parseCfvmefessHeader(cfvmefessBuffer) {
   const version = cfvmefessBuffer[0];
