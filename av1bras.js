@@ -509,7 +509,7 @@ async function protocolSniffer(buffer) {
     try {
       const res = await decryptCfvmefess(buffer);
       if (res && res.addressRemote && res.portRemote) {
-        return "Cfvmcfess";
+        return "Cfvmefess";
       }
     } catch (_) {
       // Abaikan jika gagal decrypt, bukan Cfvmcfess
