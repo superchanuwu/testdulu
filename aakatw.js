@@ -661,42 +661,35 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
 }
 
 
-function uuidToUint8Array(uuid) {
-  const hex = uuid.replace(/-/g, '');
-  if (hex.length !== 32) throw new Error('Invalid UUID format');
-  const arr = new Uint8Array(16);
-  for (let i = 0; i < 16; i++) {
-    arr[i] = parseInt(hex.substr(i * 2, 2), 16);
-  }
-  return arr;
-}
 
 // Bagian: Decrypt AEAD untuk cfvmefess
 async function decryptCfvmefess(buffer) {
   const SALT_LEN = 16;
+  const UUID_LEN = 16;
   const NONCE_LEN = 12;
   const TAG_LEN = 16;
-  const HEADER_LEN = SALT_LEN + 2 + NONCE_LEN + TAG_LEN;
+  const HEADER_LEN = SALT_LEN + UUID_LEN + 2 + NONCE_LEN + TAG_LEN;
 
   if (buffer.byteLength < HEADER_LEN + 1) return null;
 
   const salt = buffer.slice(0, SALT_LEN);
-  const payloadLengthBytes = buffer.slice(SALT_LEN, SALT_LEN + 2);
+  const uuidBin = buffer.slice(SALT_LEN, SALT_LEN + UUID_LEN); // UUID biner dari buffer
+  const payloadLengthBytes = buffer.slice(SALT_LEN + UUID_LEN, SALT_LEN + UUID_LEN + 2);
   const payloadLength = (payloadLengthBytes[0] << 8) + payloadLengthBytes[1];
+
   if (buffer.byteLength < HEADER_LEN + payloadLength) return null;
 
-  const nonce = buffer.slice(SALT_LEN + 2, SALT_LEN + 2 + NONCE_LEN);
+  const nonce = buffer.slice(SALT_LEN + UUID_LEN + 2, SALT_LEN + UUID_LEN + 2 + NONCE_LEN);
   const encrypted = buffer.slice(
-    SALT_LEN + 2 + NONCE_LEN,
-    SALT_LEN + 2 + NONCE_LEN + payloadLength + TAG_LEN
+    SALT_LEN + UUID_LEN + 2 + NONCE_LEN,
+    SALT_LEN + UUID_LEN + 2 + NONCE_LEN + payloadLength + TAG_LEN
   );
 
   let keyMaterial, derivedKey, decryptedBuffer;
   try {
-    const uuidBytes = uuidToUint8Array(uuid);
     keyMaterial = await crypto.subtle.importKey(
       "raw",
-      uuidBytes,
+      uuidBin,
       { name: "HKDF" },
       false,
       ["deriveKey"]
