@@ -721,6 +721,9 @@ async function decryptCfvmcfess(buffer) {
   return null;
 }
 
+function uuidToBytes(uuid) {
+  return new Uint8Array(uuid.replace(/-/g, "").match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+}
 
 function parseCfvmcfessHeader(cfvmcfessBuffer) {
   const version = new Uint8Array(cfvmcfessBuffer.slice(32, 33));
