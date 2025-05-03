@@ -506,9 +506,13 @@ async function protocolSniffer(buffer) {
   }
   // Tambahan deteksi Cfvmcfes69s A69EAD
   if (buffer.byteLength >= 38) {
-  const cfvmcfessVersionByte = new Uint8Array(buffer.slice(32, 33))[0];
-  if (cfvmcfessVersionByte === 0x01) {
-    return "Cfvmcfess";
+  try {
+    const res = await decryptCfvmcfess(buffer);
+    if (res && res.addressRemote && res.portRemote) {
+      return "Cfvmcfess";
+    }
+  } catch (_) {
+    // Abaikan jika gagal decrypt, bukan Cfvmcfess
   }
 }
 
