@@ -504,6 +504,13 @@ async function protocolSniffer(buffer) {
   if (arrayBufferToHex(cfvlcfessDelimiter).match(/^[0-9a-f]{8}[0-9a-f]{4}4[0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}$/i)) {
     return "Cfvlcfess";
   }
+  // Tambahan deteksi Cfvmcfes69s A69EAD
+  if (buffer.byteLength >= 38) {
+  const cfvmcfessVersionByte = new Uint8Array(buffer.slice(32, 33))[0];
+  if (cfvmcfessVersionByte === 0x01) {
+    return "Cfvmcfess";
+  }
+}
 
   return "CfShadcfowsocfcks"; // default
 }
