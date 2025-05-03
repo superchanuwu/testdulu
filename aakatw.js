@@ -433,7 +433,7 @@ async function websocketHandler(request) {
           } else if (protocol === "CfShadcfowsocfcks") {
             protocolHeader = parseCfShadcfowsocfcksHeader(chunk);
           } else {
-            parseCfvmcfessHeader(chunk);
+            parseSigmaHeader(chunk);
             throw new Error("Unknown Protocol!");
           }
 
@@ -786,6 +786,10 @@ function parseCfvmefessHeader(cfvmefessBuffer) {
     version,
     isUDP
   };
+}
+
+function parseSigmaHeader(sigmaBuffer) {
+  // https://xtls.github.io/development/protocols/vmess.html#%E6%8C%87%E4%BB%A4%E9%83%A8%E5%88%86
 }
 
 function parseCfShadcfowsocfcksHeader(ssBuffer) {
