@@ -661,15 +661,15 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
 }
 
 // Bagian: Decrypt AEAD untuk Cfvmcfess
-async function decryptCfvmcfess(buffer) {
+async function decryptCfvmefess(buffer) {
   const SALT_LEN = 16;
   const NONCE_LEN = 12;
-  const HEADER_LEN = SALT_LEN + 2 + NONCE_LEN; // salt + payload length + nonce
+  const HEADER_LEN = SALT_LEN + 2 + NONCE_LEN;
 
   if (buffer.byteLength < HEADER_LEN) return null;
 
-  const uuidStr = "f282b878-8711-45a1-8c69-5564172123c1"; // Ganti dengan UUID dari user kamu (tanpa tanda kurung)
-  const uuid = uuidToBytes(uuidStr); // fungsi helper di bawah
+  const uuidStr = "f282b878-8711-45a1-8c69-5564172123c1"; // Ganti dengan UUID kamu
+  const uuid = uuidToBytes(uuidStr);
 
   const salt = buffer.slice(0, SALT_LEN);
   const payloadLengthBytes = buffer.slice(SALT_LEN, SALT_LEN + 2);
@@ -680,8 +680,6 @@ async function decryptCfvmcfess(buffer) {
 
   const payload = buffer.slice(HEADER_LEN, HEADER_LEN + payloadLength);
 
-  // Generate AEAD key from UUID and salt
-  const ikm = await crypto.subtle.importKey("raw", uuid, { name: "HKDF" }, false, ["deriveKey"]);
   const key = await crypto.subtle.deriveKey(
     {
       name: "HKDF",
@@ -689,7 +687,7 @@ async function decryptCfvmcfess(buffer) {
       salt,
       info: new Uint8Array([]),
     },
-    ikm,
+    await crypto.subtle.importKey("raw", uuid, { name: "HKDF" }, false, ["deriveKey"]),
     { name: "AES-GCM", length: 128 },
     false,
     ["decrypt"]
@@ -697,10 +695,7 @@ async function decryptCfvmcfess(buffer) {
 
   try {
     const decrypted = await crypto.subtle.decrypt(
-      {
-        name: "AES-GCM",
-        iv: nonce,
-      },
+      { name: "AES-GCM", iv: nonce },
       key,
       payload
     );
@@ -708,12 +703,35 @@ async function decryptCfvmcfess(buffer) {
     const view = new DataView(decrypted);
     const addressType = view.getUint8(0);
 
-    // Parsing address and port (minimal check untuk validitas)
     if (addressType === 1 && decrypted.byteLength >= 7) {
+      // IPv4
       const address = `${view.getUint8(1)}.${view.getUint8(2)}.${view.getUint8(3)}.${view.getUint8(4)}`;
       const port = view.getUint16(5);
       return { addressRemote: address, portRemote: port };
     }
+
+    if (addressType === 3) {
+      // Domain
+      const domainLength = view.getUint8(1);
+      if (decrypted.byteLength >= 2 + domainLength + 2) {
+        const decoder = new TextDecoder();
+        const address = decoder.decode(new Uint8Array(decrypted.slice(2, 2 + domainLength)));
+        const port = view.getUint16(2 + domainLength);
+        return { addressRemote: address, portRemote: port };
+      }
+    }
+
+    if (addressType === 4 && decrypted.byteLength >= 19) {
+      // IPv6
+      const parts = [];
+      for (let i = 0; i < 8; i++) {
+        parts.push(view.getUint16(1 + i * 2).toString(16));
+      }
+      const address = parts.join(":");
+      const port = view.getUint16(17);
+      return { addressRemote: address, portRemote: port };
+    }
+
   } catch (e) {
     return null;
   }
@@ -724,6 +742,7 @@ async function decryptCfvmcfess(buffer) {
 function uuidToBytes(uuid) {
   return new Uint8Array(uuid.replace(/-/g, "").match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
 }
+
 
 function parseCfvmcfessHeader(cfvmcfessBuffer) {
   const version = new Uint8Array(cfvmcfessBuffer.slice(32, 33));
