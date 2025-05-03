@@ -726,6 +726,67 @@ async function decryptCfvmefess(buffer) {
   return parseCfvmefessHeader(decryptedBuffer);
 }
 
+function parseCfvmefessHeader(cfvmefessBuffer) {
+  const version = cfvmefessBuffer[0];
+  if (version !== 1) {
+    return {
+      hasError: true,
+      message: `Unsupported cfvmefess version: ${version}`
+    };
+  }
+
+  const optLength = cfvmefessBuffer[17];
+  const cmd = cfvmefessBuffer[18 + optLength];
+  const isUDP = cmd === 2;
+
+  const portIndex = 18 + optLength + 1;
+  const port = (cfvmefessBuffer[portIndex] << 8) | cfvmefessBuffer[portIndex + 1];
+
+  const addressIndex = portIndex + 2;
+  const addressType = cfvmefessBuffer[addressIndex];
+
+  let addressValue = "";
+  let addressLength = 0;
+  let addressValueIndex = addressIndex + 1;
+
+  switch (addressType) {
+    case 1: // IPv4
+      addressLength = 4;
+      addressValue = [...cfvmefessBuffer.slice(addressValueIndex, addressValueIndex + 4)].join(".");
+      break;
+    case 2: // Domain
+      addressLength = cfvmefessBuffer[addressValueIndex];
+      addressValueIndex += 1;
+      addressValue = new TextDecoder().decode(cfvmefessBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
+      break;
+    case 3: // IPv6
+      addressLength = 16;
+      const ipv6 = [];
+      for (let i = 0; i < 8; i++) {
+        const part = (cfvmefessBuffer[addressValueIndex + i * 2] << 8) | cfvmefessBuffer[addressValueIndex + i * 2 + 1];
+        ipv6.push(part.toString(16));
+      }
+      addressValue = ipv6.join(":");
+      break;
+    default:
+      return {
+        hasError: true,
+        message: `Invalid addressType: ${addressType}`
+      };
+  }
+
+  const rawDataIndex = addressValueIndex + addressLength;
+  return {
+    hasError: false,
+    addressRemote: addressValue,
+    addressType,
+    portRemote: port,
+    rawDataIndex,
+    rawClientData: cfvmefessBuffer.slice(rawDataIndex),
+    version,
+    isUDP
+  };
+}
 
 function parseCfShadcfowsocfcksHeader(ssBuffer) {
   const view = new DataView(ssBuffer);
