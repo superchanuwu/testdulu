@@ -662,14 +662,16 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
 
 // Bagian: Decrypt AEAD untuk Cfvmcfess
 async function decryptCfvmcfess(buffer) {
+// Fungsi untuk mendekripsi VMess AEAD dari Cfvmcfess
+async function decryptCfvmsfess(buffer) {
   const SALT_LEN = 16;
   const NONCE_LEN = 12;
-  const HEADER_LEN = SALT_LEN + 2 + NONCE_LEN; // salt + payload length + nonce
+  const HEADER_LEN = SALT_LEN + 2 + NONCE_LEN;
 
   if (buffer.byteLength < HEADER_LEN) return null;
 
-  const uuidStr = "f282b878-8711-45a1-8c69-5564172123c1"; // Ganti dengan UUID dari user kamu (tanpa tanda kurung)
-  const uuid = uuidToBytes(uuidStr); // fungsi helper di bawah
+  const uuidStr = "f282b878-8711-45a1-8c69-5564172123c1"; // Ganti dengan UUID kamu sendiri
+  const uuid = uuidToBytes(uuidStr); // Konversi UUID ke Uint8Array
 
   const salt = buffer.slice(0, SALT_LEN);
   const payloadLengthBytes = buffer.slice(SALT_LEN, SALT_LEN + 2);
@@ -680,22 +682,22 @@ async function decryptCfvmcfess(buffer) {
 
   const payload = buffer.slice(HEADER_LEN, HEADER_LEN + payloadLength);
 
-  // Generate AEAD key from UUID and salt
-  const ikm = await crypto.subtle.importKey("raw", uuid, { name: "HKDF" }, false, ["deriveKey"]);
-  const key = await crypto.subtle.deriveKey(
-    {
-      name: "HKDF",
-      hash: "SHA-1",
-      salt,
-      info: new Uint8Array([]),
-    },
-    ikm,
-    { name: "AES-GCM", length: 128 },
-    false,
-    ["decrypt"]
-  );
-
   try {
+    // Derive AES-GCM key dari UUID dan salt
+    const ikm = await crypto.subtle.importKey("raw", uuid, { name: "HKDF" }, false, ["deriveBits"]);
+    const keyMaterial = await crypto.subtle.deriveBits(
+      {
+        name: "HKDF",
+        hash: "SHA-1",
+        salt,
+        info: new Uint8Array([]),
+      },
+      ikm,
+      128
+    );
+
+    const key = await crypto.subtle.importKey("raw", keyMaterial, { name: "AES-GCM" }, false, ["decrypt"]);
+
     const decrypted = await crypto.subtle.decrypt(
       {
         name: "AES-GCM",
@@ -705,24 +707,15 @@ async function decryptCfvmcfess(buffer) {
       payload
     );
 
-    const view = new DataView(decrypted);
-    const addressType = view.getUint8(0);
-
-    // Parsing address and port (minimal check untuk validitas)
-    if (addressType === 1 && decrypted.byteLength >= 7) {
-      const address = `${view.getUint8(1)}.${view.getUint8(2)}.${view.getUint8(3)}.${view.getUint8(4)}`;
-      const port = view.getUint16(5);
-      return { addressRemote: address, portRemote: port };
-    }
+    return new Uint8Array(decrypted); // hasil dekripsi dikembalikan sebagai Uint8Array
   } catch (e) {
     return null;
   }
-
-  return null;
 }
 
+// Helper: Konversi UUID string ke Uint8Array
 function uuidToBytes(uuid) {
-  return new Uint8Array(uuid.replace(/-/g, "").match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+  return new Uint8Array(uuid.replace(/-/g, "").match(/.{1,2}/g).map(b => parseInt(b, 16)));
 }
 
 function parseCfvmcfessHeader(cfvmcfessBuffer) {
