@@ -671,8 +671,8 @@ function uuidToUint8Array(uuid) {
   return arr;
 }
 
-// Bagian: Decrypt AEAD untuk Cfvmcfess
-async function decryptCfvmefess(buffer, user) {
+// Bagian: Decrypt AEAD untuk cfvmefess
+async function decryptCfvmefess(buffer) {
   const SALT_LEN = 16;
   const NONCE_LEN = 12;
   const TAG_LEN = 16;
@@ -686,12 +686,21 @@ async function decryptCfvmefess(buffer, user) {
   if (buffer.byteLength < HEADER_LEN + payloadLength) return null;
 
   const nonce = buffer.slice(SALT_LEN + 2, SALT_LEN + 2 + NONCE_LEN);
-  const encrypted = buffer.slice(SALT_LEN + 2 + NONCE_LEN, SALT_LEN + 2 + NONCE_LEN + payloadLength + TAG_LEN);
+  const encrypted = buffer.slice(
+    SALT_LEN + 2 + NONCE_LEN,
+    SALT_LEN + 2 + NONCE_LEN + payloadLength + TAG_LEN
+  );
 
   let keyMaterial, derivedKey, decryptedBuffer;
   try {
     const uuidBytes = uuidToUint8Array(user.uuid);
-    keyMaterial = await crypto.subtle.importKey("raw", uuidBytes, { name: "HKDF" }, false, ["deriveKey"]);
+    keyMaterial = await crypto.subtle.importKey(
+      "raw",
+      uuidBytes,
+      { name: "HKDF" },
+      false,
+      ["deriveKey"]
+    );
     derivedKey = await crypto.subtle.deriveKey(
       {
         name: "HKDF",
@@ -704,57 +713,17 @@ async function decryptCfvmefess(buffer, user) {
       false,
       ["decrypt"]
     );
-
-    decryptedBuffer = new Uint8Array(
-      await crypto.subtle.decrypt(
-        { name: "AES-GCM", iv: nonce },
-        derivedKey,
-        encrypted
-      )
-    );
+    decryptedBuffer = new Uint8Array(await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: nonce },
+      derivedKey,
+      encrypted
+    ));
   } catch (e) {
     return null;
   }
 
   if (decryptedBuffer[0] !== 1) return null;
   return parseCfvmefessHeader(decryptedBuffer);
-}
-
-function parseCfvmefessHeader(buffer) {
-  let offset = 1;
-  const optLen = buffer[offset];
-  offset += 1 + optLen;
-  const cmd = buffer[offset];
-  offset++;
-  let destAddr, destPort;
-  switch (buffer[offset]) {
-    case 1: // IPv4
-      destAddr = buffer.slice(offset + 1, offset + 5).join(".");
-      offset += 5;
-      break;
-    case 2: // Domain
-      const domainLen = buffer[offset + 1];
-      destAddr = new TextDecoder().decode(buffer.slice(offset + 2, offset + 2 + domainLen));
-      offset += 2 + domainLen;
-      break;
-    case 3: // IPv6
-      const addrBytes = buffer.slice(offset + 1, offset + 17);
-      destAddr = Array.from({ length: 8 }, (_, i) =>
-        ((addrBytes[i * 2] << 8) | addrBytes[i * 2 + 1]).toString(16)
-      ).join(":");
-      offset += 17;
-      break;
-    default:
-      return null;
-  }
-  destPort = (buffer[offset] << 8) | buffer[offset + 1];
-  offset += 2;
-  return {
-    protocol: "cfvmcfess",
-    address: destAddr,
-    port: destPort,
-    rawPacket: buffer.slice(offset)
-  };
 }
 
 
