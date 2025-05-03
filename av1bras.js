@@ -662,7 +662,7 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
 
 
 
-// Bagian: Decrypt AEAD untuk Cfvmcfess
+
 async function decryptCfvmefess(buffer) {
 function uuidToUint8Array(uuid) {
   const hex = uuid.replace(/-/g, '');
@@ -674,6 +674,7 @@ function uuidToUint8Array(uuid) {
   return arr;
 }
 
+// Bagian: Decrypt AEAD untuk Cfvmcfess
 async function decryptCfvmefess(buffer, user) {
   const SALT_LEN = 16;
   const NONCE_LEN = 12;
