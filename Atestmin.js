@@ -662,30 +662,69 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
 
 // Bagian: Decrypt AEAD untuk Cfvmcfess
 async function decryptCfvmcfess(buffer) {
-  const iv = buffer.slice(0, 16);
-  const key = await crypto.subtle.importKey(
-    "raw",
-    iv,
-    { name: "AES-GCM" },
+  const SALT_LEN = 16;
+  const NONCE_LEN = 12;
+  const HEADER_LEN = SALT_LEN + 2 + NONCE_LEN; // salt + payload length + nonce
+
+  if (buffer.byteLength < HEADER_LEN) return null;
+
+  const uuidStr = "f282b878-8711-45a1-8c69-5564172123c1"; // Ganti dengan UUID dari user kamu (tanpa tanda kurung)
+  const uuid = uuidToBytes(uuidStr); // fungsi helper di bawah
+
+  const salt = buffer.slice(0, SALT_LEN);
+  const payloadLengthBytes = buffer.slice(SALT_LEN, SALT_LEN + 2);
+  const nonce = buffer.slice(SALT_LEN + 2, HEADER_LEN);
+
+  const payloadLength = (payloadLengthBytes[0] << 8) | payloadLengthBytes[1];
+  if (buffer.byteLength < HEADER_LEN + payloadLength) return null;
+
+  const payload = buffer.slice(HEADER_LEN, HEADER_LEN + payloadLength);
+
+  // Generate AEAD key from UUID and salt
+  const ikm = await crypto.subtle.importKey("raw", uuid, { name: "HKDF" }, false, ["deriveKey"]);
+  const key = await crypto.subtle.deriveKey(
+    {
+      name: "HKDF",
+      hash: "SHA-1",
+      salt,
+      info: new Uint8Array([]),
+    },
+    ikm,
+    { name: "AES-GCM", length: 128 },
     false,
     ["decrypt"]
   );
+
   try {
     const decrypted = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv },
+      {
+        name: "AES-GCM",
+        iv: nonce,
+      },
       key,
-      buffer.slice(16)
+      payload
     );
-    return new Uint8Array(decrypted);
+
+    const view = new DataView(decrypted);
+    const addressType = view.getUint8(0);
+
+    // Parsing address and port (minimal check untuk validitas)
+    if (addressType === 1 && decrypted.byteLength >= 7) {
+      const address = `${view.getUint8(1)}.${view.getUint8(2)}.${view.getUint8(3)}.${view.getUint8(4)}`;
+      const port = view.getUint16(5);
+      return { addressRemote: address, portRemote: port };
+    }
   } catch (e) {
     return null;
   }
+
+  return null;
 }
 
 
 function parseCfvmcfessHeader(cfvmcfessBuffer) {
   const version = new Uint8Array(cfvmcfessBuffer.slice(32, 33));
-  const decryptedPayload = decryptCfvmcfessAEAD(cfvmcfessBuffer);
+  const decryptedPayload = decryptCfvmcfess(cfvmcfessBuffer);
 
   if (!decryptedPayload) {
     return {
