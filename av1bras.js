@@ -661,9 +661,6 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
 }
 
 
-
-
-async function decryptCfvmefess(buffer) {
 function uuidToUint8Array(uuid) {
   const hex = uuid.replace(/-/g, '');
   if (hex.length !== 32) throw new Error('Invalid UUID format');
@@ -723,53 +720,40 @@ async function decryptCfvmefess(buffer, user) {
   return parseCfvmefessHeader(decryptedBuffer);
 }
 
-function parseCfvmefessHeader(decryptcfvmefessBuffer) {
-  const version = decryptcfvmefessBuffer[0];
-  const optLength = decryptcfvmefessBuffer[1];
-  const command = decryptcfvmefessBuffer[2];
-  const port = (decryptcfvmefessBuffer[3 + optLength] << 8) + decryptcfvmefessBuffer[4 + optLength];
-  const addressType = decryptcfvmefessBuffer[5 + optLength];
-
-  let addressValue;
-  let addressValueIndex;
-
-  switch (addressType) {
-      case 1:
-          addressValue = decryptcfvmefessBuffer.slice(6 + optLength, 10 + optLength);
-          addressValueIndex = 10 + optLength;
-          break;
-      case 4:
-          const ipv6 = [];
-          const dataview = new DataView(decryptcfvmefessBuffer.buffer, decryptcfvmefessBuffer.byteOffset + 6 + optLength);
-          for (let i = 0; i < 8; i++) {
-              ipv6.push(dataview.getUint16(i * 2).toString(16));
-          }
-          addressValue = ipv6.join(":");
-          addressValueIndex = 22 + optLength;
-          break;
-      case 3:
-          const domainLength = decryptcfvmefessBuffer[6 + optLength];
-          addressValue = new TextDecoder().decode(decryptcfvmefessBuffer.slice(7 + optLength, 7 + optLength + domainLength));
-          addressValueIndex = 7 + optLength + domainLength;
-          break;
-      default:
-          return null;
+function parseCfvmefessHeader(buffer) {
+  let offset = 1;
+  const optLen = buffer[offset];
+  offset += 1 + optLen;
+  const cmd = buffer[offset];
+  offset++;
+  let destAddr, destPort;
+  switch (buffer[offset]) {
+    case 1: // IPv4
+      destAddr = buffer.slice(offset + 1, offset + 5).join(".");
+      offset += 5;
+      break;
+    case 2: // Domain
+      const domainLen = buffer[offset + 1];
+      destAddr = new TextDecoder().decode(buffer.slice(offset + 2, offset + 2 + domainLen));
+      offset += 2 + domainLen;
+      break;
+    case 3: // IPv6
+      const addrBytes = buffer.slice(offset + 1, offset + 17);
+      destAddr = Array.from({ length: 8 }, (_, i) =>
+        ((addrBytes[i * 2] << 8) | addrBytes[i * 2 + 1]).toString(16)
+      ).join(":");
+      offset += 17;
+      break;
+    default:
+      return null;
   }
-
-  if (!addressValue || addressValue.length === 0) return null;
-
-  const isUDP = false;
-  const versionArr = new Uint8Array([version, 0x01]);
-
+  destPort = (buffer[offset] << 8) | buffer[offset + 1];
+  offset += 2;
   return {
-      hasError: false,
-      addressRemote: addressValue,
-      addressType: addressType,
-      portRemote: port,
-      rawDataIndex: addressValueIndex + addressValue.length,
-      rawClientData: decryptcfvmefessBuffer.slice(addressValueIndex + addressValue.length),
-      version: versionArr,
-      isUDP: isUDP,
+    protocol: "cfvmcfess",
+    address: destAddr,
+    port: destPort,
+    rawPacket: buffer.slice(offset)
   };
 }
 
