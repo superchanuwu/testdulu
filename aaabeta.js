@@ -661,124 +661,93 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
 }
 
 // Bagian: Decrypt AEAD untuk Cfvmcfess
-async function decryptCfvmefess(buffer) {
+async function decryptCfvmefess(buffer, user) {
   const SALT_LEN = 16;
   const NONCE_LEN = 12;
-  const HEADER_LEN = SALT_LEN + 2 + NONCE_LEN;
-
-  if (buffer.byteLength < HEADER_LEN) return null;
-
-  const uuidStr = "f282b878-8711-45a1-8c69-556b2f9d5c3c";
-  const uuid = uuidToBytes(uuidStr);
+  const TAG_LEN = 16;
+  const HEADER_LEN = SALT_LEN + 2 + NONCE_LEN + TAG_LEN;
+  if (buffer.byteLength < HEADER_LEN + 1) return null;
 
   const salt = buffer.slice(0, SALT_LEN);
   const payloadLengthBytes = buffer.slice(SALT_LEN, SALT_LEN + 2);
-  const nonce = buffer.slice(SALT_LEN + 2, HEADER_LEN);
-
   const payloadLength = (payloadLengthBytes[0] << 8) + payloadLengthBytes[1];
   if (buffer.byteLength < HEADER_LEN + payloadLength) return null;
 
-  const payload = buffer.slice(HEADER_LEN, HEADER_LEN + payloadLength);
+  const nonce = buffer.slice(SALT_LEN + 2, SALT_LEN + 2 + NONCE_LEN);
+  const encrypted = buffer.slice(SALT_LEN + 2 + NONCE_LEN, SALT_LEN + 2 + NONCE_LEN + payloadLength + TAG_LEN);
 
-  const key = await crypto.subtle.deriveKey(
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    user.uuid,
+    { name: "HKDF" },
+    false,
+    ["deriveKey"]
+  );
+  const derivedKey = await crypto.subtle.deriveKey(
     {
       name: "HKDF",
-      hash: "SHA-1",
+      hash: "SHA-256",
       salt,
-      info: new Uint8Array([]),
+      info: new Uint8Array([118, 109, 101, 115, 115, 65, 69, 65, 68]) // "Cfvmcfess"
     },
-    await crypto.subtle.importKey("raw", uuid, { name: "HKDF" }, false, ["deriveKey"]),
+    keyMaterial,
     { name: "AES-GCM", length: 128 },
     false,
     ["decrypt"]
   );
 
-  let decrypted;
+  let decryptedBuffer;
   try {
-    decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv: nonce }, key, payload);
-  } catch (e) {
-    return {
-      hasError: true,
-      message: "decrypt AES-GCM gagal: " + e.message,
-    };
+    decryptedBuffer = new Uint8Array(
+      await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: nonce },
+        derivedKey,
+        encrypted
+      )
+    );
+  } catch {
+    return null;
   }
 
-  const decryptedBuffer = new Uint8Array(decrypted);
-  if (decryptedBuffer[0] !== 1) {
-    return {
-      hasError: true,
-      message: "Versi tidak didukung: " + decryptedBuffer[0],
-    };
-  }
+  if (decryptedBuffer[0] !== 1) return null;
 
-  return parseCfvmcfessHeader(decryptedBuffer);
+  return parseCfvmefessHeader(decryptedBuffer);
 }
 
-function uuidToBytes(uuid) {
-  return new Uint8Array(uuid.replace(/-/g, "").match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
-}
+function parseCfvmefessHeader(decryptcfvmefessBuffer) {
+  const version = decryptcfvmefessBuffer[0];
+  const optLength = decryptcfvmefessBuffer[1];
+  const command = decryptcfvmefessBuffer[2];
+  const port = (decryptcfvmefessBuffer[3 + optLength] << 8) + decryptcfvmefessBuffer[4 + optLength];
+  const addressType = decryptcfvmefessBuffer[5 + optLength];
 
-
-function parseCfvmcfessHeader(decryptCfvmefessBuffer) {
-  const version = new Uint8Array(decryptCfvmefessBuffer.slice(0, 1))[0];
-  let isUDP = false;
-
-  const optLength = new Uint8Array(decryptCfvmefessBuffer.slice(1, 2))[0];
-  const cmd = new Uint8Array(decryptCfvmefessBuffer.slice(2 + optLength, 2 + optLength + 1))[0];
-
-  if (cmd === 1) {
-    // TCP
-  } else if (cmd === 2) {
-    isUDP = true;
-  } else {
-    return {
-      hasError: true,
-      message: `command ${cmd} is not supported`,
-    };
-  }
-
-  const portIndex = 2 + optLength + 1;
-  const portBuffer = decryptCfvmefessBuffer.slice(portIndex, portIndex + 2);
-  const portRemote = new DataView(portBuffer).getUint16(0);
-
-  let addressIndex = portIndex + 2;
-  const addressType = new Uint8Array(decryptCfvmefessBuffer.slice(addressIndex, addressIndex + 1))[0];
-  let addressLength = 0;
-  let addressValueIndex = addressIndex + 1;
-  let addressValue = "";
+  let addressValue;
+  let addressValueIndex;
 
   switch (addressType) {
     case 1:
-      addressLength = 4;
-      addressValue = new Uint8Array(decryptCfvmefessBuffer.slice(addressValueIndex, addressValueIndex + addressLength)).join(".");
+      addressValue = decryptcfvmefessBuffer.slice(6 + optLength, 10 + optLength).join(".");
+      addressValueIndex = 10 + optLength;
       break;
-    case 2:
-      addressLength = new Uint8Array(decryptCfvmefessBuffer.slice(addressValueIndex, addressValueIndex + 1))[0];
-      addressValueIndex += 1;
-      addressValue = new TextDecoder().decode(decryptCfvmefessBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
-      break;
-    case 3:
-      addressLength = 16;
-      const dataView = new DataView(decryptCfvmefessBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
+    case 4:
       const ipv6 = [];
+      const dataview = new DataView(decryptcfvmefessBuffer.buffer, decryptcfvmefessBuffer.byteOffset + 6 + optLength, 16);
       for (let i = 0; i < 8; i++) {
-        ipv6.push(dataView.getUint16(i * 2).toString(16));
+        ipv6.push(dataview.getUint16(i * 2).toString(16));
       }
       addressValue = ipv6.join(":");
+      addressValueIndex = 22 + optLength;
+      break;
+    case 3:
+      const domainLength = decryptcfvmefessBuffer[6 + optLength];
+      addressValue = new TextDecoder().decode(decryptcfvmefessBuffer.slice(7 + optLength, 7 + optLength + domainLength));
+      addressValueIndex = 7 + optLength + domainLength;
       break;
     default:
-      return {
-        hasError: true,
-        message: `invalid addressType ${addressType}`,
-      };
+      return null;
   }
 
-  if (!addressValue) {
-    return {
-      hasError: true,
-      message: "address value is empty",
-    };
-  }
+  if (!addressValue || addressValue.length === 0) return null;
 
   return {
   hasError: false,
@@ -789,7 +758,8 @@ function parseCfvmcfessHeader(decryptCfvmefessBuffer) {
   rawClientData: decryptCfvmefessBuffer.slice(addressValueIndex + addressLength),
   version: new Uint8Array([version, 0]),
   isUDP: isUDP,
-};
+  };
+}
 
 
 function parseCfShadcfowsocfcksHeader(ssBuffer) {
